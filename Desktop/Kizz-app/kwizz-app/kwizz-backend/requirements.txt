@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+requests
+openai
+pydantic
+PyPDF2
+python-docx
+pillow
+pytesseract
+sqlite3-binary
