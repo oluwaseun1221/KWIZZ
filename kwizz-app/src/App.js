@@ -1,6 +1,6 @@
 // App.js
 import React, { useState } from "react";
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
 
 // ✅ Clerk imports
 import {
@@ -17,27 +17,25 @@ import Quiz from "./components/Quiz";
 import Results from "./components/Results";
 import Leaderboard from "./components/Leaderboard";
 import CreateQuiz from "./components/CreateQuiz";
-import UploadFile from "./components/UploadFile";
+
+// Centers Clerk's sign-in / sign-up card in the middle of the page
+function CenteredAuth({ children }) {
+  return <div className="clerk-center">{children}</div>;
+}
 
 function App() {
   const [score, setScore] = useState(0);
-  const [quizFinished, setQuizFinished] = useState(false);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [quizId, setQuizId] = useState(null);
   const [userAnswers, setUserAnswers] = useState({});
-  const [questions, setQuestions] = useState([]);
+  const [, setQuestions] = useState([]);
 
   const handleQuizStart = () => {
-    setQuizFinished(false);
     setScore(0);
     setTotalQuestions(0);
     setQuizId(null);
     setUserAnswers({});
     setQuestions([]);
-  };
-
-  const handleQuizFinish = () => {
-    setQuizFinished(true);
   };
 
   return (
@@ -51,25 +49,12 @@ function App() {
 
       {/* ✅ If signed in → show app routes */}
       <SignedIn>
-        {quizFinished && (
-          <div className="quiz-results">
-            <Results
-              score={score}
-              total={totalQuestions}
-              onRestart={handleQuizStart}
-              userAnswers={userAnswers}
-              quizId={quizId}
-            />
-          </div>
-        )}
-
         <Routes>
           <Route path="/" element={<Home onStartQuiz={handleQuizStart} />} /> {/* ✅ FIXED: Home is now accessible */}
           <Route
             path="/quiz"
             element={
               <Quiz
-                onFinish={handleQuizFinish}
                 setScore={setScore}
                 setTotalQuestions={setTotalQuestions}
                 setQuizId={setQuizId}
@@ -79,10 +64,27 @@ function App() {
             }
           />
 
+          {/* Results is now a real route. If the page is refreshed there is no
+              quiz in memory, so send the user home instead of showing a blank page. */}
           <Route
-            path="/upload"
-            element={<UploadFile />}
+            path="/results"
+            element={
+              totalQuestions > 0 ? (
+                <Results
+                  score={score}
+                  total={totalQuestions}
+                  onRestart={handleQuizStart}
+                  userAnswers={userAnswers}
+                  quizId={quizId}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
           />
+
+          {/* Old /upload link: uploading now happens on the quiz page */}
+          <Route path="/upload" element={<Navigate to="/quiz" replace />} />
 
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/create-quiz" element={<CreateQuiz />} />
@@ -114,19 +116,19 @@ function App() {
           {/* Clerk Auth routes */}
           <Route
             path="/sign-in"
-            element={<SignIn routing="path" path="/sign-in" />}
+            element={<CenteredAuth><SignIn routing="path" path="/sign-in" /></CenteredAuth>}
           />
           <Route
             path="/sign-up"
-            element={<SignUp routing="path" path="/sign-up" />}
+            element={<CenteredAuth><SignUp routing="path" path="/sign-up" /></CenteredAuth>}
           />
           <Route
             path="/sign-in/sso-callback"
-            element={<SignIn routing="path" path="/sign-in" />}
+            element={<CenteredAuth><SignIn routing="path" path="/sign-in" /></CenteredAuth>}
           />
           <Route
             path="/sign-up/sso-callback"
-            element={<SignUp routing="path" path="/sign-up" />}
+            element={<CenteredAuth><SignUp routing="path" path="/sign-up" /></CenteredAuth>}
           />
         </Routes>
       </SignedOut>

@@ -1,41 +1,15 @@
 // Results.js
-import React, { useEffect } from "react";
+import React from "react";
 import { useUser } from "@clerk/clerk-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-function Results({ score, total, onRestart, userAnswers, quizId }) {
+function Results({ score, total, onRestart, userAnswers = {} }) {
   const { user } = useUser();
+  const navigate = useNavigate();
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
 
-  // ✅ Save score to backend leaderboard
-  useEffect(() => {
-    if (!user) return;
-
-    const saveScore = async () => {
-      try {
-        await fetch("http://127.0.0.1:8000/save_score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name:
-              user.fullName ||
-              user.username ||
-              user.primaryEmailAddress?.emailAddress ||
-              "Anonymous",
-            score,
-            total,
-            percentage,
-            difficulty: localStorage.getItem("quizDifficulty") || "easy",
-            quiz_id: quizId,
-          }),
-        });
-      } catch (err) {
-        console.error("Error saving score:", err);
-      }
-    };
-
-    saveScore();
-  }, [score, total, quizId, user, percentage]);
+  // The score is saved once, by Quiz.js, when the quiz is submitted.
+  // (Saving it here as well used to create duplicate leaderboard rows.)
 
   return (
     <div className="results-container">
@@ -91,7 +65,13 @@ function Results({ score, total, onRestart, userAnswers, quizId }) {
 
       {/* ✅ Navigation */}
       <div style={{ marginTop: "1.5rem" }}>
-        <button className="restart-btn" onClick={onRestart}>
+        <button
+          className="restart-btn"
+          onClick={() => {
+            onRestart();
+            navigate("/quiz");
+          }}
+        >
           🔄 Restart Quiz
         </button>
         <Link to="/leaderboard" className="results-btn" style={{ marginLeft: "1rem" }}>

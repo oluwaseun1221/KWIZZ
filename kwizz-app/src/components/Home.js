@@ -51,11 +51,6 @@ function Home({ onStartQuiz }) {
         <Link to="/leaderboard" className="leaderboard-btn">
           🏆 Leaderboard
         </Link>
-        
-        {/* Upload File */}
-        <Link to="/upload" className="upload-btn">
-          📁 Upload File
-        </Link>
       </div>
 
       {/* Features */}

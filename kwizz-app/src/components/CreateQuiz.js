@@ -1,9 +1,9 @@
 // CreateQuiz.js
 import React, { useState } from "react";
-import { useUser } from "@clerk/clerk-react"; // ✅ Add this import
+import { useAuth } from "@clerk/clerk-react"; // ✅ getToken lives on useAuth, not useUser
 
 function CreateQuiz() {
-  const { user } = useUser(); // ✅ Get the user object to access the token
+  const { getToken } = useAuth(); // ✅ Use auth's getToken to fetch a session JWT
 
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState([]);
@@ -47,7 +47,7 @@ function CreateQuiz() {
     }
 
     try {
-      const token = await user.getToken();
+      const token = await getToken();
 
       const res = await fetch("http://127.0.0.1:8000/create_custom_quiz/", {
         method: "POST",

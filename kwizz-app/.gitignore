@@ -21,3 +21,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# secrets and local environments
+.env
+**/.env
+venv/
+.venv/
+__pycache__/

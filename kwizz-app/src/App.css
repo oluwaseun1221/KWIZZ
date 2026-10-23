@@ -408,3 +408,14 @@ button:hover {
     font-size: 0.95rem;
   }
 }
+
+/* ===== CLERK SIGN-IN / SIGN-UP (centered) ===== */
+.clerk-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 110px);
+  padding: 1.5rem 1rem;
+  position: relative;
+  z-index: 5;
+}

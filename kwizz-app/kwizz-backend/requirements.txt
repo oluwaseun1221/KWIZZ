@@ -9,4 +9,6 @@ PyPDF2
 python-docx
 pillow
 pytesseract
-sqlite3-binary
+PyMuPDF
+PyJWT[crypto]
+python-dotenv

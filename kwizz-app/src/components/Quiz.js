@@ -1,12 +1,15 @@
 // Quiz.js
 import React, { useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/clerk-react"; // ✅ Clerk user
+import { useUser, useAuth } from "@clerk/clerk-react"; // ✅ Clerk user + token
 import { useNavigate } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+// Seconds per question for each difficulty
+const TIME_BY_DIFFICULTY = { easy: 30, medium: 20, hard: 15 };
 
 function Quiz({
   setScore,
@@ -15,18 +18,23 @@ function Quiz({
   setQuizId,
   setUserAnswers,
   setQuestions,
-  difficulty = "easy",
+  difficulty: difficultyProp,
 }) {
   const navigate = useNavigate();
   const { user } = useUser();
+  const { getToken } = useAuth();
+
+  // Difficulty chosen on the Home page (saved in localStorage)
+  const difficulty =
+    difficultyProp || localStorage.getItem("quizDifficulty") || "easy";
+  const timeSettings = TIME_BY_DIFFICULTY[difficulty] || 30;
 
   const [questions, setLocalQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [theoryAnswer, setTheoryAnswer] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [timeSettings] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(timeSettings);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState(false);
@@ -104,16 +112,23 @@ function Quiz({
 
       setStatusMsg("📤 Generating quiz...");
 
+      const token = await getToken().catch(() => null);
       const res = await fetch("http://127.0.0.1:8000/generate_quiz_from_text/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           text: extractedText,
           difficulty: difficulty || "easy",
         }),
       });
 
-      if (!res.ok) throw new Error("Quiz generation failed");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || "Quiz generation failed");
+      }
       const data = await res.json();
 
       if (!data.quiz_id) throw new Error("Invalid response from backend");
@@ -121,8 +136,7 @@ function Quiz({
       setLocalQuizId(data.quiz_id);
       if (setQuizId) setQuizId(data.quiz_id);
 
-      // Give backend time to process
-      setTimeout(() => fetchQuiz(data.quiz_id), 2000);
+      fetchQuiz(data.quiz_id);
     } catch (err) {
       console.error("Upload error:", err);
       setStatusMsg(`❌ ${err.message || "File processing failed. Please try again."}`);
@@ -178,21 +192,34 @@ function Quiz({
         ? Math.round((Object.values(localUserAnswers).filter((a) => a.is_correct).length / questions.length) * 100)
         : 0;
 
-    fetch("http://127.0.0.1:8000/save_score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: user?.fullName || "Anonymous",
-        score: Object.values(localUserAnswers).filter((a) => a.is_correct).length,
-        total: questions.length,
-        percentage: percentage,
-        difficulty: difficulty,
-        quiz_id: quizId || "N/A",
-      }),
-    }).catch((err) => console.error("Leaderboard save failed:", err));
+    // Save the score once. The login token (if any) lets the backend attach
+    // the score to this user's account.
+    const saveScore = async () => {
+      const token = await getToken().catch(() => null);
+      await fetch("http://127.0.0.1:8000/save_score", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name:
+            user?.fullName ||
+            user?.username ||
+            user?.primaryEmailAddress?.emailAddress ||
+            "Anonymous",
+          score: Object.values(localUserAnswers).filter((a) => a.is_correct).length,
+          total: questions.length,
+          percentage: percentage,
+          difficulty: difficulty,
+          quiz_id: quizId || "N/A",
+        }),
+      });
+    };
+    saveScore().catch((err) => console.error("Leaderboard save failed:", err));
 
     navigate("/results");
-  }, [onFinish, localUserAnswers, navigate, questions, difficulty, quizId, user]);
+  }, [onFinish, localUserAnswers, navigate, questions, difficulty, quizId, user, getToken]);
 
   // ✅ Next button handler
   const handleNext = useCallback(() => {

@@ -1,11 +1,14 @@
 # utils.py
 from fastapi import UploadFile, HTTPException
-import pypandoc
 from io import BytesIO
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz  # PyMuPDF (new name)
+except ImportError:
+    import fitz  # older PyMuPDF versions
+from docx import Document  # python-docx
 
 async def extract_text_from_file(file: UploadFile) -> str:
-    """Extracts text from various file types."""
+    """Extracts text from PDF, Word (.docx) and plain text files."""
     try:
         file_content = await file.read()
         file_type = file.content_type
@@ -17,12 +20,14 @@ async def extract_text_from_file(file: UploadFile) -> str:
                     text += page.get_text()
             return text
         elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            # Assuming pypandoc is configured to use pandoc correctly
-            # You may need to install pandoc on your system for this to work
-            return pypandoc.convert_text(file_content, "plain", format="docx")
+            # python-docx reads .docx directly, so no pandoc install is needed
+            doc = Document(BytesIO(file_content))
+            return "\n".join(p.text for p in doc.paragraphs)
         elif file_type == "text/plain":
             return file_content.decode("utf-8")
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing file: {e}")
