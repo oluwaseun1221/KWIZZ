@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+requests
+openai
+pydantic
+PyPDF2
+python-docx
+pillow
+pytesseract
+PyJWT[crypto]
+python-dotenv
