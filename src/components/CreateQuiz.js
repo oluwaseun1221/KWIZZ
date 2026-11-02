@@ -1,6 +1,7 @@
 // CreateQuiz.js
 import React, { useState } from "react";
 import { useAuth } from "@clerk/clerk-react"; // ✅ getToken lives on useAuth, not useUser
+import { API_URL } from "../config";
 
 function CreateQuiz() {
   const { getToken } = useAuth(); // ✅ Use auth's getToken to fetch a session JWT
@@ -49,7 +50,7 @@ function CreateQuiz() {
     try {
       const token = await getToken();
 
-      const res = await fetch("http://127.0.0.1:8000/create_custom_quiz/", {
+      const res = await fetch(`${API_URL}/create_custom_quiz/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

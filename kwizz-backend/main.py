@@ -49,7 +49,8 @@ app.add_middleware(
 )
 
 # === SQLite Setup ===
-DB_FILE = os.path.join(BASE_DIR, "quizzes.db")
+# On a host with a persistent disk, point DB_FILE at it (e.g. /var/data/quizzes.db)
+DB_FILE = os.getenv("DB_FILE") or os.path.join(BASE_DIR, "quizzes.db")
 
 
 def _add_column_if_missing(cursor, table: str, column: str, ddl: str):

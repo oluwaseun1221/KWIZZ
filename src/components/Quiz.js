@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
+import { API_URL } from "../config";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -50,7 +51,7 @@ function Quiz({
   const fetchQuiz = async (quizId) => {
     try {
       setStatusMsg("📥 Fetching quiz from server...");
-      const res = await fetch(`http://127.0.0.1:8000/get_quiz/${quizId}`);
+      const res = await fetch(`${API_URL}/get_quiz/${quizId}`);
       if (!res.ok) throw new Error("Failed to fetch quiz");
       const data = await res.json();
 
@@ -118,7 +119,7 @@ function Quiz({
       setStatusMsg("📤 Generating quiz...");
 
       const token = await getToken().catch(() => null);
-      const res = await fetch("http://127.0.0.1:8000/generate_quiz_from_text/", {
+      const res = await fetch(`${API_URL}/generate_quiz_from_text/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -202,7 +203,7 @@ function Quiz({
     // the score to this user's account.
     const saveScore = async () => {
       const token = await getToken().catch(() => null);
-      await fetch("http://127.0.0.1:8000/save_score", {
+      await fetch(`${API_URL}/save_score`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

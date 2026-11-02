@@ -1,6 +1,7 @@
 // Leaderboard.js
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
+import { API_URL } from "../config";
 
 function Leaderboard() {
   const { getToken } = useAuth();
@@ -17,11 +18,11 @@ function Leaderboard() {
         let res;
         if (view === "mine") {
           const token = await getToken();
-          res = await fetch("http://127.0.0.1:8000/my_scores", {
+          res = await fetch(`${API_URL}/my_scores`, {
             headers: { Authorization: `Bearer ${token}` },
           });
         } else {
-          res = await fetch("http://127.0.0.1:8000/get_leaderboard");
+          res = await fetch(`${API_URL}/get_leaderboard`);
         }
         if (!res.ok) throw new Error("Failed to fetch leaderboard");
         const data = await res.json();
