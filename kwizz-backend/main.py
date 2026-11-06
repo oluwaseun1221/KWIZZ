@@ -262,8 +262,10 @@ def generate_basic_questions(text: str, difficulty: str, num_questions: int) -> 
     return questions
 
 
-# --- AI generator (Anthropic API). Used when ANTHROPIC_API_KEY is set. ---
+# --- AI generators. The first one with an API key set is tried first:
+#     1) Claude (ANTHROPIC_API_KEY)   2) Gemini (GEMINI_API_KEY)   3) basic fallback ---
 AI_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")  # change if Google renames it
 AI_MAX_INPUT_CHARS = 40000  # roughly 12-15 pages of text
 MAX_QUESTIONS = 40          # most questions allowed in one quiz
 
@@ -282,15 +284,9 @@ def _parse_json_array(raw: str) -> list:
     return json.loads(raw[start:end + 1])
 
 
-def generate_ai_questions(text: str, difficulty: str, num_questions: int) -> Optional[list]:
-    """Returns a list of MCQ questions, or None if no API key is configured.
-    Raises on any API/parsing problem so the caller can fall back."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return None
-
+def _build_prompt(text: str, difficulty: str, num_questions: int) -> str:
     guide = DIFFICULTY_GUIDE.get(difficulty, DIFFICULTY_GUIDE["easy"])
-    prompt = (
+    return (
         f"Write {num_questions} multiple-choice quiz questions based ONLY on the study text below.\n"
         f"Difficulty: {difficulty}. {guide}\n\n"
         "Rules:\n"
@@ -303,24 +299,9 @@ def generate_ai_questions(text: str, difficulty: str, num_questions: int) -> Opt
         f"STUDY TEXT:\n{text[:AI_MAX_INPUT_CHARS]}"
     )
 
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": AI_MODEL,
-            "max_tokens": min(8000, 500 + 180 * num_questions),  # more questions need more room
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=120,
-    )
-    resp.raise_for_status()
-    blocks = resp.json().get("content", [])
-    raw = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
+def _questions_from_ai_text(raw: str, num_questions: int) -> list:
+    """Turns the model's JSON text into our question format, dropping bad items."""
     questions = []
     for item in _parse_json_array(raw):
         options = item.get("options")
@@ -343,10 +324,85 @@ def generate_ai_questions(text: str, difficulty: str, num_questions: int) -> Opt
                 for i, opt in enumerate(options)
             ],
         })
-
     if not questions:
         raise ValueError("AI returned no valid questions")
     return questions[:num_questions]
+
+
+def generate_claude_questions(text: str, difficulty: str, num_questions: int) -> Optional[list]:
+    """Claude (Anthropic API). Returns None if no key is set; raises on any problem."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": AI_MODEL,
+            "max_tokens": min(8000, 500 + 180 * num_questions),  # more questions need more room
+            "messages": [{"role": "user", "content": _build_prompt(text, difficulty, num_questions)}],
+        },
+        timeout=120,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Claude API {resp.status_code}: {resp.text[:300]}")
+    blocks = resp.json().get("content", [])
+    raw = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    return _questions_from_ai_text(raw, num_questions)
+
+
+def generate_gemini_questions(text: str, difficulty: str, num_questions: int) -> Optional[list]:
+    """Google Gemini (free tier available via Google AI Studio). Returns None if no key is set."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+
+    resp = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+        headers={"x-goog-api-key": api_key, "content-type": "application/json"},
+        json={
+            "contents": [{"parts": [{"text": _build_prompt(text, difficulty, num_questions)}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                # some Gemini models spend part of this budget "thinking", so leave generous room
+                "maxOutputTokens": min(32000, 4000 + 300 * num_questions),
+            },
+        },
+        timeout=120,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Gemini API {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise ValueError(f"Gemini returned no answer ({data.get('promptFeedback')})")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    raw = "".join(p.get("text", "") for p in parts)
+    return _questions_from_ai_text(raw, num_questions)
+
+
+AI_PROVIDERS = [
+    ("claude", generate_claude_questions),
+    ("gemini", generate_gemini_questions),
+]
+
+
+def generate_ai_questions(text: str, difficulty: str, num_questions: int):
+    """Tries each configured AI provider in order.
+    Returns (questions, provider_name), or (None, None) if none worked or none is configured."""
+    for name, generate in AI_PROVIDERS:
+        try:
+            questions = generate(text, difficulty, num_questions)
+            if questions:
+                return questions, name
+        except Exception as e:
+            print(f"[quiz] {name} generation failed, trying next option: {e}")
+    return None, None
 
 
 async def _build_quiz(req: QuizRequest, user_id: Optional[str]):
@@ -357,18 +413,11 @@ async def _build_quiz(req: QuizRequest, user_id: Optional[str]):
     difficulty = req.difficulty.lower()
     num_questions = max(1, min(req.num_questions, MAX_QUESTIONS))
 
-    questions = None
-    generator = "basic"
-    try:
-        # requests is blocking, so run it in a worker thread
-        questions = await asyncio.to_thread(generate_ai_questions, text, difficulty, num_questions)
-        if questions:
-            generator = "ai"
-    except Exception as e:
-        print(f"[quiz] AI generation failed, using basic generator: {e}")
-        questions = None
+    # requests is blocking, so run the AI call in a worker thread
+    questions, generator = await asyncio.to_thread(generate_ai_questions, text, difficulty, num_questions)
 
     if not questions:
+        generator = "basic"
         questions = generate_basic_questions(text, difficulty, num_questions)
 
     if not questions:
